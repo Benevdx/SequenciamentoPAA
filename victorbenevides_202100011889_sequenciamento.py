@@ -2,6 +2,8 @@ import time
 from dataclasses import dataclass
 from typing import List
 import multiprocessing
+from itertools import islice
+import math
 
 
 @dataclass
@@ -56,22 +58,26 @@ def calcular_probabilidade_doenca(sequencia_dna: str, genes: List[str], tamanho_
         if encontrar_ocorrencias_gene(sequencia_dna, gene, tamanho_minimo_substring):
             genes_correspondentes += 1
             
-    probabilidade_doenca = round((genes_correspondentes / len(genes)) * 100)
+    probabilidade_doenca = math.floor(((genes_correspondentes / len(genes)) * 100)+0.5)
     return min(probabilidade_doenca, 100)
 
 
-def processar_doenca(argumentos):
-    """Processa uma única doença e retorna o resultado"""
-    linha_doenca, sequencia_dna, tamanho_minimo_substring = argumentos
+def processar_grupo_doencas(argumentos):
+    """Processa um grupo inteiro de doenças independentemente"""
+    linhas_doencas, sequencia_dna, tamanho_minimo_substring = argumentos
     
-    partes = linha_doenca.strip().split()
-    codigo = partes[0]
-    genes = partes[2:]  # Genes começam no terceiro elemento
-    
-    # Calcula a probabilidade da doença
-    probabilidade_doenca = calcular_probabilidade_doenca(sequencia_dna, genes, tamanho_minimo_substring)
-    
-    return Doenca(codigo, genes, probabilidade_doenca)
+    resultados = []
+    for linha_doenca in linhas_doencas:
+        partes = linha_doenca.strip().split()
+        codigo = partes[0]
+        genes = partes[2:]  # Genes começam no terceiro elemento
+        
+        # Calcula a probabilidade da doença
+        probabilidade_doenca = calcular_probabilidade_doenca(sequencia_dna, genes, tamanho_minimo_substring)
+        
+        resultados.append(Doenca(codigo, genes, probabilidade_doenca))
+        
+    return resultados
 
 
 def ler_arquivo(nome_arquivo_entrada: str):
@@ -103,6 +109,12 @@ def escrever_arquivo(nome_arquivo_saida: str, doencas: List[Doenca]):
         arquivo.writelines(f"{doenca.codigo}->{doenca.probabilidade_doenca}%\n" for doenca in doencas)
 
 
+def dividir_lista(lista, n):
+    """Divide uma lista em n partes aproximadamente iguais"""
+    k, m = divmod(len(lista), n)
+    return [lista[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
+
+
 def main():
     nome_arquivo_entrada = "entrada.txt"
     nome_arquivo_saida = "saida.txt"
@@ -116,13 +128,19 @@ def main():
     # Lê dados do arquivo
     tamanho_minimo_substring, sequencia_dna, linhas_doencas = ler_arquivo(nome_arquivo_entrada)
     
-    # Prepara argumentos para processamento paralelo
-    argumentos_processamento = [(linha, sequencia_dna, tamanho_minimo_substring) for linha in linhas_doencas]
+    # Divide a lista de doenças em chunks, um para cada núcleo
+    grupos_doencas = dividir_lista(linhas_doencas, numero_nucleos)
+    
+    # Prepara argumentos para processamento paralelo - cada núcleo recebe um grupo completo
+    argumentos_processamento = [(grupo, sequencia_dna, tamanho_minimo_substring) for grupo in grupos_doencas]
     
     # Usa pool de processos para paralelismo verdadeiro (evitando GIL)
     with multiprocessing.Pool(processes=numero_nucleos) as pool:
-        # Mapeia o processamento de doenças para o pool
-        doencas = pool.map(processar_doenca, argumentos_processamento)
+        # Cada núcleo processa um grupo inteiro de doenças
+        resultados = pool.map(processar_grupo_doencas, argumentos_processamento)
+    
+    # Combina os resultados de todos os núcleos
+    doencas = [doenca for grupo in resultados for doenca in grupo]
     
     # Ordena doenças
     doencas_ordenadas = ordenar_doencas(doencas)
