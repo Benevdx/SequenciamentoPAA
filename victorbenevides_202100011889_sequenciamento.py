@@ -2,9 +2,8 @@ import time
 from dataclasses import dataclass
 from typing import List
 import multiprocessing
-from itertools import islice
 import math
-
+import sys
 
 @dataclass
 class DNA:
@@ -116,8 +115,8 @@ def dividir_lista(lista, n):
 
 
 def main():
-    nome_arquivo_entrada = "entrada.txt"
-    nome_arquivo_saida = "saida.txt"
+    nome_arquivo_entrada = sys.argv[1]
+    nome_arquivo_saida = sys.argv[2]
 
     # Medição de tempo
     tempo_inicio = time.time()
